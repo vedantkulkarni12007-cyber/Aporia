@@ -15,10 +15,7 @@ public class WikipediaKnowledgeSourceTest {
                 return "{\"query\":{\"search\":[{\"title\":\"Black hole\"}]}}";
             }
             if (url.contains("page/summary/")) {
-                return "{\"pageid\":123, \"title\":\"Black hole\", \"extract\":\"A black hole is a region of spacetime...\"}";
-            }
-            if (url.contains("page/related/")) {
-                return "{\"pages\":[{\"pageid\":456, \"title\":\"Gravity\", \"extract\":\"Gravity is...\"}]}";
+                return "{\"wikibase_item\":\"Q589\", \"pageid\":123, \"title\":\"Black hole\", \"extract\":\"A black hole is a region of spacetime...\"}";
             }
             throw new Exception("Unknown url: " + url);
         };
@@ -27,21 +24,13 @@ public class WikipediaKnowledgeSourceTest {
         KnowledgeResult res = source.searchConcept("black hole");
         
         // Assert primary concept
-        assertEquals("123", res.primaryConcept().id());
+        assertEquals("Q589", res.primaryConcept().id());
         assertEquals("Black hole", res.primaryConcept().title());
         assertEquals("A black hole is a region of spacetime...", res.primaryConcept().description());
         
-        // Assert related concepts
-        assertEquals(1, res.relatedConcepts().size());
-        assertEquals("456", res.relatedConcepts().get(0).id());
-        assertEquals("Gravity", res.relatedConcepts().get(0).title());
-        assertEquals("Gravity is...", res.relatedConcepts().get(0).description());
-        
-        // Assert relations
-        assertEquals(1, res.relations().size());
-        assertEquals("123", res.relations().get(0).sourceId());
-        assertEquals("456", res.relations().get(0).targetId());
-        assertEquals("RELATED", res.relations().get(0).type());
+        // Assert related concepts and relations are empty (relies on Wikidata now)
+        assertEquals(0, res.relatedConcepts().size());
+        assertEquals(0, res.relations().size());
     }
 
     @Test

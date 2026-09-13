@@ -1,6 +1,8 @@
 package com.aporia.app;
 
 import com.aporia.graph.Graph;
+import com.aporia.graph.layout.IncrementalLayout;
+import com.aporia.graph.layout.NodeLayout;
 import com.aporia.model.Node;
 import com.aporia.ui.camera.Camera;
 import com.aporia.ui.graph.GraphRenderer;
@@ -15,8 +17,8 @@ import com.aporia.knowledge.WikidataKnowledgeSource;
 import com.aporia.knowledge.WikipediaKnowledgeSource;
 import com.aporia.knowledge.http.DefaultHttpTransport;
 import com.aporia.knowledge.http.HttpTransport;
-
 import com.aporia.ui.panels.ConceptDetailPanel;
+
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -31,6 +33,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 
 public class AporiaApp extends Application {
@@ -41,22 +47,44 @@ public class AporiaApp extends Application {
     private KnowledgeAggregator aggregator;
     private ConceptDetailPanel detailPanel;
     
+    private Graph activeGraph;
+    
     // Request counter to handle search race conditions
     private int searchRequestCounter = 0;
-    private boolean isExploring = false;
+    private boolean isWorking = false;
     
-    // Minimal history state
-    private Stack<String> navigationHistory = new Stack<>();
+    private Stack<String> searchHistory = new Stack<>();
+    private Stack<ExpansionSnapshot> expansionHistory = new Stack<>();
+    private Set<String> expandedConceptIds = new HashSet<>();
+    
     private Button backBtn;
     private TextField searchField;
     private Label statusLabel;
+    
+    private static class ExpansionSnapshot {
+        Graph graph;
+        Map<Node, NodeLayout> layoutMap;
+        Set<String> expandedConceptIds;
+        String selectedNodeId;
+        double targetXOffset;
+        double targetYOffset;
+        double targetZoom;
+
+        public ExpansionSnapshot(Graph graph, Map<Node, NodeLayout> layoutMap, Set<String> expandedConceptIds, String selectedNodeId, double tx, double ty, double tz) {
+            this.graph = graph.copy();
+            this.layoutMap = layoutMap;
+            this.expandedConceptIds = new HashSet<>(expandedConceptIds);
+            this.selectedNodeId = selectedNodeId;
+            this.targetXOffset = tx;
+            this.targetYOffset = ty;
+            this.targetZoom = tz;
+        }
+    }
 
     @Override
     public void start(Stage primaryStage) {
-        // 1. Reduced Motion Preference
         boolean reducedMotion = false;
 
-        // 2. Initialize Core Dependencies
         visualGraph = new VisualGraph();
         camera = new Camera();
         camera.setReducedMotion(reducedMotion);
@@ -67,31 +95,23 @@ public class AporiaApp extends Application {
             new WikidataKnowledgeSource(http)
         );
 
-        // 3. Setup Canvas and Renderer
         Canvas canvas = new Canvas(800, 600);
         renderer = new GraphRenderer(canvas, visualGraph, camera);
         renderer.setReducedMotion(reducedMotion);
 
-        // 4. Input Handling for Graph Interaction (click to select)
         new InteractionHandler(canvas, camera, visualGraph, this::handleNodeClick);
 
-        // 5. Setup Minimal Search UI
         searchField = new TextField();
         searchField.setPromptText("Search knowledge...");
         searchField.setStyle("-fx-background-color: #2A2A28; -fx-text-fill: #F0EAD6; -fx-prompt-text-fill: #A69F91; -fx-border-color: #B59E80; -fx-border-width: 1px; -fx-border-radius: 3px; -fx-background-radius: 3px; -fx-padding: 5px 10px;");
         
-        Button searchBtn = new Button("Explore");
+        Button searchBtn = new Button("Search");
         searchBtn.setStyle("-fx-background-color: #B59E80; -fx-text-fill: #1A1A18; -fx-background-radius: 3px; -fx-padding: 5px 15px; -fx-font-weight: bold; -fx-cursor: hand;");
         
         backBtn = new Button("← Back");
         backBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #B59E80; -fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 5px 10px;");
         backBtn.setDisable(true);
-        backBtn.setOnAction(e -> {
-            if (!navigationHistory.isEmpty() && !isExploring) {
-                String prevConcept = navigationHistory.pop();
-                exploreConcept(prevConcept, false); // false = don't push current root to history
-            }
-        });
+        backBtn.setOnAction(e -> handleBack());
         
         statusLabel = new Label();
         statusLabel.setStyle("-fx-text-fill: #A69F91;");
@@ -99,22 +119,20 @@ public class AporiaApp extends Application {
         HBox searchBox = new HBox(10, backBtn, searchField, searchBtn, statusLabel);
         searchBox.setAlignment(Pos.CENTER_LEFT);
         searchBox.setPadding(new Insets(20));
-        searchBox.setPickOnBounds(false); // Let mouse events pass through to canvas
+        searchBox.setPickOnBounds(false);
         
-        Runnable performSearch = () -> {
-            if (isExploring) return;
+        Runnable triggerSearch = () -> {
+            if (isWorking) return;
             String query = searchField.getText().trim();
             if (query.isEmpty()) return;
-            exploreConcept(query, true); // true = push current root to history
+            performSearch(query, true);
         };
 
-        searchBtn.setOnAction(e -> performSearch.run());
-        searchField.setOnAction(e -> performSearch.run());
+        searchBtn.setOnAction(e -> triggerSearch.run());
+        searchField.setOnAction(e -> triggerSearch.run());
         
-        // 5.1 Setup Concept Detail Panel
-        detailPanel = new ConceptDetailPanel(query -> exploreConcept(query, true));
+        detailPanel = new ConceptDetailPanel(conceptId -> performExplore(conceptId));
 
-        // 6. Setup Layout
         StackPane root = new StackPane();
         canvas.widthProperty().bind(root.widthProperty());
         canvas.heightProperty().bind(root.heightProperty());
@@ -124,7 +142,6 @@ public class AporiaApp extends Application {
         StackPane.setAlignment(detailPanel, Pos.CENTER_RIGHT);
         StackPane.setMargin(detailPanel, new Insets(80, 20, 20, 20));
 
-        // 7. Animation Loop
         AnimationTimer timer = new AnimationTimer() {
             private long lastTime = -1;
             private final long startTime = System.nanoTime();
@@ -135,7 +152,6 @@ public class AporiaApp extends Application {
                     lastTime = now;
                     return;
                 }
-                
                 double dt = (now - lastTime) / 1_000_000_000.0;
                 lastTime = now;
                 double elapsedSeconds = (now - startTime) / 1_000_000_000.0;
@@ -152,11 +168,10 @@ public class AporiaApp extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
         
-        // Initial fallback graph for empty state
-        Graph initialGraph = new Graph();
+        activeGraph = new Graph();
         Node initialNode = new Node("welcome", "Aporia Observatory");
-        initialGraph.addNode(initialNode);
-        visualGraph.initializeFromDomain(initialGraph, initialNode);
+        activeGraph.addNode(initialNode);
+        visualGraph.initializeFromDomain(activeGraph, initialNode);
     }
     
     private void handleNodeClick(VisualNode node) {
@@ -167,13 +182,41 @@ public class AporiaApp extends Application {
         detailPanel.update(node, visualGraph);
     }
     
-    /**
-     * Unified exploration pathway for both Search UI and Graph node clicks.
-     * @param query the concept to explore
-     * @param pushHistory true if the current root concept should be saved to history
-     */
-    private void exploreConcept(String query, boolean pushHistory) {
-        isExploring = true;
+    private void handleBack() {
+        if (isWorking) return;
+        
+        if (!expansionHistory.isEmpty()) {
+            ExpansionSnapshot snapshot = expansionHistory.pop();
+            activeGraph = snapshot.graph;
+            expandedConceptIds = snapshot.expandedConceptIds;
+            
+            visualGraph.expandFromDomain(activeGraph, snapshot.layoutMap);
+            camera.restore(snapshot.targetXOffset, snapshot.targetYOffset, snapshot.targetZoom);
+            
+            if (snapshot.selectedNodeId != null) {
+                VisualNode sel = visualGraph.getNodes().stream()
+                    .filter(n -> n.getDomainNode().getId().equals(snapshot.selectedNodeId))
+                    .findFirst().orElse(null);
+                visualGraph.selectNode(sel);
+                detailPanel.update(sel, visualGraph);
+            } else {
+                visualGraph.selectNode(null);
+                detailPanel.update(null, visualGraph);
+            }
+            
+            updateBackButton();
+        } else if (!searchHistory.isEmpty()) {
+            String prevConcept = searchHistory.pop();
+            performSearch(prevConcept, false);
+        }
+    }
+    
+    private void updateBackButton() {
+        backBtn.setDisable(expansionHistory.isEmpty() && searchHistory.isEmpty());
+    }
+
+    private void performSearch(String query, boolean pushHistory) {
+        isWorking = true;
         final int currentRequestId = ++searchRequestCounter;
         
         if (pushHistory) {
@@ -181,45 +224,58 @@ public class AporiaApp extends Application {
                 .filter(vn -> vn.getDepth() == 0)
                 .findFirst()
                 .ifPresent(rootNode -> {
-                    // Only push if it has a real query label, bypass the dummy welcome node
                     if (!rootNode.getDomainNode().getId().equals("welcome")) {
-                        navigationHistory.push(rootNode.getDomainNode().getLabel());
+                        searchHistory.push(rootNode.getDomainNode().getLabel());
                     }
                 });
         }
         
         Platform.runLater(() -> {
-            statusLabel.setText("Exploring...");
-            statusLabel.setStyle("-fx-text-fill: #A69F91;"); // Neutral
-            backBtn.setDisable(navigationHistory.isEmpty());
+            statusLabel.setText("Searching...");
+            statusLabel.setStyle("-fx-text-fill: #A69F91;");
+            updateBackButton();
         });
         
         Thread thread = new Thread(() -> {
             try {
                 KnowledgeResult result = aggregator.search(query);
                 Platform.runLater(() -> {
-                    // Only apply if this is still the most recent request
                     if (currentRequestId == searchRequestCounter) {
-                        isExploring = false;
+                        isWorking = false;
                         statusLabel.setText("");
-                        searchField.setText(result.primaryConcept().title()); // Sync UI
-                        updateGraph(result);
+                        searchField.setText(result.primaryConcept().title());
+                        
+                        expansionHistory.clear();
+                        expandedConceptIds.clear();
+                        
+                        activeGraph = new Graph();
+                        KnowledgeMapper.appendToGraph(activeGraph, result);
+                        Node rootNode = activeGraph.getNode(result.primaryConcept().id());
+                        
+                        visualGraph.initializeFromDomain(activeGraph, rootNode);
+                        expandedConceptIds.add(rootNode.getId());
+                        
+                        VisualNode rootVisualNode = visualGraph.getNodes().stream()
+                            .filter(vn -> vn.getDomainNode().equals(rootNode))
+                            .findFirst().orElse(null);
+                        visualGraph.selectNode(rootVisualNode);
+                        detailPanel.update(rootVisualNode, visualGraph);
+                        
+                        camera.reset();
+                        updateBackButton();
                     }
                 });
             } catch (KnowledgeException ex) {
                 Platform.runLater(() -> {
                     if (currentRequestId == searchRequestCounter) {
-                        isExploring = false;
-                        statusLabel.setText("Could not explore that concept.");
-                        statusLabel.setStyle("-fx-text-fill: #E35353;"); // Error color
+                        isWorking = false;
+                        statusLabel.setText("Search failed.");
+                        statusLabel.setStyle("-fx-text-fill: #E35353;");
                         
-                        // Revert history if we just pushed to it
-                        if (pushHistory && !navigationHistory.isEmpty()) {
-                            navigationHistory.pop();
-                            backBtn.setDisable(navigationHistory.isEmpty());
+                        if (pushHistory && !searchHistory.isEmpty()) {
+                            searchHistory.pop();
                         }
-                        
-                        System.err.println("Exploration failed: " + ex.getMessage());
+                        updateBackButton();
                     }
                 });
             }
@@ -228,25 +284,82 @@ public class AporiaApp extends Application {
         thread.start();
     }
     
-    private void updateGraph(KnowledgeResult result) {
-        Graph newGraph = new Graph();
-        KnowledgeMapper.appendToGraph(newGraph, result);
+    private void performExplore(String conceptId) {
+        if (expandedConceptIds.contains(conceptId)) {
+            return;
+        }
         
-        // The primary concept becomes the depth-0 root node
-        Node rootNode = newGraph.getNode(result.primaryConcept().id());
-        visualGraph.initializeFromDomain(newGraph, rootNode);
+        isWorking = true;
+        final int currentRequestId = ++searchRequestCounter;
         
-        // Provide immediate user feedback by selecting the central node
-        VisualNode rootVisualNode = visualGraph.getNodes().stream()
-            .filter(vn -> vn.getDomainNode().equals(rootNode))
+        VisualNode visualNode = visualGraph.getNodes().stream()
+            .filter(n -> n.getDomainNode().getId().equals(conceptId))
             .findFirst().orElse(null);
-        visualGraph.selectNode(rootVisualNode);
+            
+        if (visualNode == null) {
+            isWorking = false;
+            return;
+        }
         
-        // Auto-update the detail panel for the new root
-        detailPanel.update(rootVisualNode, visualGraph);
+        Node exploredNode = visualNode.getDomainNode();
+        String query = exploredNode.getLabel(); // Fallback to label for textual search
         
-        // Recenter camera to the newly layout-ed root node
-        camera.reset();
+        // Snapshot current state
+        String selectedId = visualGraph.getSelectedNode() != null ? visualGraph.getSelectedNode().getDomainNode().getId() : null;
+        ExpansionSnapshot snapshot = new ExpansionSnapshot(
+            activeGraph, 
+            visualGraph.getLayoutMap(), 
+            expandedConceptIds, 
+            selectedId,
+            camera.getTargetXOffset(), 
+            camera.getTargetYOffset(), 
+            camera.getZoom()
+        );
+        
+        Platform.runLater(() -> {
+            statusLabel.setText("Exploring...");
+            statusLabel.setStyle("-fx-text-fill: #A69F91;");
+        });
+        
+        Thread thread = new Thread(() -> {
+            try {
+                // Explore by textual query string matching the node's label
+                KnowledgeResult result = aggregator.search(query);
+                Platform.runLater(() -> {
+                    if (currentRequestId == searchRequestCounter) {
+                        isWorking = false;
+                        statusLabel.setText("");
+                        expansionHistory.push(snapshot);
+                        updateBackButton();
+                        
+                        List<Node> newNodes = KnowledgeMapper.appendToGraph(activeGraph, result);
+                        Map<Node, NodeLayout> layoutMap = visualGraph.getLayoutMap();
+                        
+                        IncrementalLayout.expand(layoutMap, exploredNode, newNodes, 150.0);
+                        
+                        visualGraph.expandFromDomain(activeGraph, layoutMap);
+                        expandedConceptIds.add(exploredNode.getId());
+                        
+                        // Keep the explored node selected
+                        VisualNode sel = visualGraph.getNodes().stream()
+                            .filter(n -> n.getDomainNode().getId().equals(exploredNode.getId()))
+                            .findFirst().orElse(null);
+                        visualGraph.selectNode(sel);
+                        detailPanel.update(sel, visualGraph);
+                    }
+                });
+            } catch (KnowledgeException ex) {
+                Platform.runLater(() -> {
+                    if (currentRequestId == searchRequestCounter) {
+                        isWorking = false;
+                        statusLabel.setText("Explore failed.");
+                        statusLabel.setStyle("-fx-text-fill: #E35353;");
+                    }
+                });
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
     }
 
     public static void main(String[] args) {

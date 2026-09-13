@@ -13,7 +13,7 @@ public class KnowledgeMapperTest {
         KnowledgeResult result = source.searchConcept("astronomy");
         
         Graph graph = new Graph();
-        KnowledgeMapper.appendToGraph(graph, result);
+        java.util.List<Node> newNodes = KnowledgeMapper.appendToGraph(graph, result);
         
         assertTrue(graph.containsNode("astronomy"));
         assertTrue(graph.containsNode("physics"));
@@ -25,6 +25,8 @@ public class KnowledgeMapperTest {
         
         assertEquals(3, graph.getNodeCount());
         assertEquals(2, graph.getOutgoingEdges(graph.getNode("astronomy")).size());
+        
+        assertEquals(3, newNodes.size());
     }
     
     @Test

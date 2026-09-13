@@ -4,6 +4,9 @@ import com.aporia.graph.Graph;
 import com.aporia.model.Edge;
 import com.aporia.model.Node;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * An anti-corruption layer that converts semantic knowledge concepts into the abstract graph domain.
  */
@@ -14,22 +17,42 @@ public class KnowledgeMapper {
      * 
      * @param graph  The graph domain model to mutate.
      * @param result The semantic knowledge to import.
+     * @return A list of newly added Nodes that were not previously in the graph.
      */
-    public static void appendToGraph(Graph graph, KnowledgeResult result) {
+    public static List<Node> appendToGraph(Graph graph, KnowledgeResult result) {
+        List<Node> newNodes = new ArrayList<>();
         if (graph == null || result == null) {
-            return;
+            return newNodes;
         }
 
         // 1. Ensure primary concept exists as a Node
-        addConceptAsNode(graph, result.primaryConcept());
+        Node addedPrimary = addConceptAsNode(graph, result.primaryConcept());
+        if (addedPrimary != null) newNodes.add(addedPrimary);
+        
+        List<KnowledgeRelation> conceptualRelations = new ArrayList<>();
+        for (KnowledgeRelation r : result.relations()) {
+            if (r.category() != KnowledgeRelation.RelationCategory.CONTEXTUAL) {
+                conceptualRelations.add(r);
+            }
+        }
 
-        // 2. Ensure all related concepts exist as Nodes
+        // 2. Ensure all related concepts exist as Nodes (only if they have a conceptual relation)
         for (KnowledgeConcept concept : result.relatedConcepts()) {
-            addConceptAsNode(graph, concept);
+            boolean hasConceptualEdge = false;
+            for (KnowledgeRelation r : conceptualRelations) {
+                if (r.targetId().equals(concept.id()) || r.sourceId().equals(concept.id())) {
+                    hasConceptualEdge = true;
+                    break;
+                }
+            }
+            if (hasConceptualEdge) {
+                Node addedRelated = addConceptAsNode(graph, concept);
+                if (addedRelated != null) newNodes.add(addedRelated);
+            }
         }
 
         // 3. Construct the edges between the Nodes
-        for (KnowledgeRelation relation : result.relations()) {
+        for (KnowledgeRelation relation : conceptualRelations) {
             Node source = graph.getNode(relation.sourceId());
             Node target = graph.getNode(relation.targetId());
 
@@ -48,12 +71,16 @@ public class KnowledgeMapper {
                 }
             }
         }
+        
+        return newNodes;
     }
 
-    private static void addConceptAsNode(Graph graph, KnowledgeConcept concept) {
+    private static Node addConceptAsNode(Graph graph, KnowledgeConcept concept) {
         if (!graph.containsNode(concept.id())) {
-            // Passing the description to retain knowledge metadata for the UI detail panel
-            graph.addNode(new Node(concept.id(), concept.title(), concept.description()));
+            Node n = new Node(concept.id(), concept.title(), concept.description());
+            graph.addNode(n);
+            return n;
         }
+        return null;
     }
 }

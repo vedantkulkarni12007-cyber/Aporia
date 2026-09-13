@@ -56,6 +56,17 @@ public class Camera {
             this.currentZoom = 1.0;
         }
     }
+    
+    public void restore(double xOffset, double yOffset, double zoom) {
+        this.targetXOffset = xOffset;
+        this.targetYOffset = yOffset;
+        this.targetZoom = zoom;
+        if (reducedMotion) {
+            this.currentXOffset = xOffset;
+            this.currentYOffset = yOffset;
+            this.currentZoom = zoom;
+        }
+    }
 
     public void zoom(double factor, double mouseScreenX, double mouseScreenY) {
         // Pivot around the mouse coordinate in world space
@@ -122,7 +133,9 @@ public class Camera {
         return currentZoom;
     }
 
-    // Exposed for testing
+    // Exposed for testing and state snapshotting
     public double getTargetXOffset() { return targetXOffset; }
+    public double getTargetYOffset() { return targetYOffset; }
+    public double getTargetZoom() { return targetZoom; }
     public double getCurrentXOffset() { return currentXOffset; }
 }

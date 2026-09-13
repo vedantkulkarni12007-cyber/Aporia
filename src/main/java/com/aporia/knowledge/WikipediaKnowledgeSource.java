@@ -51,38 +51,21 @@ public class WikipediaKnowledgeSource implements KnowledgeSource {
             String summaryJson = http.get(summaryUrl);
             Map<String, Object> summaryRoot = (Map<String, Object>) MiniJson.parse(summaryJson);
             
-            String pageId = extractId(summaryRoot);
+            // Try to extract wikibase_item (Q-ID) first, fallback to pageid
+            String pageId = extractString(summaryRoot, "wikibase_item", null);
+            if (pageId == null) {
+                pageId = extractId(summaryRoot);
+            }
+            
             String displayTitle = extractString(summaryRoot, "title", title);
             String extract = extractString(summaryRoot, "extract", "No description available.");
             
             KnowledgeConcept primaryConcept = new KnowledgeConcept(pageId, displayTitle, extract);
             
-            // 3. Get related concepts
-            String relatedUrl = "https://en.wikipedia.org/api/rest_v1/page/related/" 
-                + URLEncoder.encode(title.replace(" ", "_"), StandardCharsets.UTF_8);
-                
-            String relatedJson = http.get(relatedUrl);
-            Map<String, Object> relatedRoot = (Map<String, Object>) MiniJson.parse(relatedJson);
-            List<Object> pagesArray = (List<Object>) relatedRoot.get("pages");
-            
+            // Wikipedia's /related endpoint was decommissioned (T376297).
+            // We now rely on Wikidata entirely for relations and related concepts.
             List<KnowledgeConcept> relatedConcepts = new ArrayList<>();
             List<KnowledgeRelation> relations = new ArrayList<>();
-            
-            // Limit to a small deterministic set to prevent graph explosion
-            int limit = Math.min(8, pagesArray.size());
-            for (int i = 0; i < limit; i++) {
-                Map<String, Object> relPage = (Map<String, Object>) pagesArray.get(i);
-                
-                String relPageId = extractId(relPage);
-                String relTitle = extractString(relPage, "title", "Unknown");
-                String relExtract = extractString(relPage, "extract", "No description available.");
-                
-                KnowledgeConcept relConcept = new KnowledgeConcept(relPageId, relTitle, relExtract);
-                relatedConcepts.add(relConcept);
-                
-                // Wikipedia REST API "related" endpoint yields semantically proximate pages.
-                relations.add(new KnowledgeRelation(pageId, relPageId, "RELATED"));
-            }
             
             return new KnowledgeResult(primaryConcept, relatedConcepts, relations);
             

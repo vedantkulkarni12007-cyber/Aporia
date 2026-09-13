@@ -101,4 +101,25 @@ public class GraphTest {
         assertEquals(0, graph.getNodeCount());
         assertFalse(graph.containsNode("1"));
     }
+
+    @Test
+    public void testCopy() {
+        Node n1 = new Node("1", "Node1");
+        Node n2 = new Node("2", "Node2");
+        graph.addNode(n1);
+        graph.addNode(n2);
+        graph.addEdge(new Edge(n1, n2, "REL"));
+
+        Graph clone = graph.copy();
+        
+        // Assert structure is identical
+        assertEquals(2, clone.getNodeCount());
+        assertEquals(1, clone.getEdgeCount());
+        assertTrue(clone.containsNode("1"));
+        
+        // Assert independence
+        clone.addNode(new Node("3", "Node3"));
+        assertEquals(3, clone.getNodeCount());
+        assertEquals(2, graph.getNodeCount()); // Original unaffected
+    }
 }

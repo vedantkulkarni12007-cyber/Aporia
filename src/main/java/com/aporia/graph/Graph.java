@@ -80,4 +80,23 @@ public class Graph {
         outgoingEdges.clear();
         edgeCount = 0;
     }
+    
+    /**
+     * Creates a snapshot copy of the current graph.
+     * Nodes and Edges are conceptually immutable domain objects, so references are shared.
+     * The structural collections (nodes map, edges lists) are deeply copied to ensure
+     * modifications to the copy do not affect the original.
+     */
+    public Graph copy() {
+        Graph clone = new Graph();
+        for (Node n : this.nodes.values()) {
+            clone.addNode(n); // safe because Node is immutable
+        }
+        for (List<Edge> edges : this.outgoingEdges.values()) {
+            for (Edge e : edges) {
+                clone.addEdge(e); // safe because Edge is immutable
+            }
+        }
+        return clone;
+    }
 }

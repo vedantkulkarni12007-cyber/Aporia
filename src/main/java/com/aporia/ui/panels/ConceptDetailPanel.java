@@ -65,7 +65,7 @@ public class ConceptDetailPanel extends VBox {
         exploreBtn.setMaxWidth(Double.MAX_VALUE);
         exploreBtn.setOnAction(e -> {
             if (currentNode != null && onExplore != null) {
-                onExplore.accept(currentNode.getDomainNode().getLabel());
+                onExplore.accept(currentNode.getDomainNode().getId());
             }
         });
         

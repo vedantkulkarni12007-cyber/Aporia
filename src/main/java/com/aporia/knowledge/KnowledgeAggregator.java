@@ -30,8 +30,16 @@ public class KnowledgeAggregator {
             wikiError = e;
         }
 
+        String wikidataQuery = query;
+        if (wikiResult != null) {
+            String wikiId = wikiResult.primaryConcept().id();
+            if (wikiId.matches("^Q\\d+$")) {
+                wikidataQuery = wikiId;
+            }
+        }
+
         try {
-            dataResult = wikidata.searchConcept(query);
+            dataResult = wikidata.searchConcept(wikidataQuery);
         } catch (KnowledgeException e) {
             dataError = e;
         }

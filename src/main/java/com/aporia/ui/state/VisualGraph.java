@@ -77,4 +77,37 @@ public class VisualGraph {
     public VisualNode getHoveredNode() {
         return hoveredNode;
     }
+
+    public Map<Node, NodeLayout> getLayoutMap() {
+        Map<Node, NodeLayout> layoutMap = new HashMap<>();
+        for (VisualNode vn : nodes.values()) {
+            layoutMap.put(vn.getDomainNode(), new NodeLayout(new com.aporia.graph.layout.Point(vn.getX(), vn.getY()), vn.getDepth()));
+        }
+        return layoutMap;
+    }
+
+    public void expandFromDomain(Graph graph, Map<Node, NodeLayout> layoutMap) {
+        // Create new visual nodes for those that don't exist
+        for (Map.Entry<Node, NodeLayout> entry : layoutMap.entrySet()) {
+            Node n = entry.getKey();
+            NodeLayout nl = entry.getValue();
+            if (!nodes.containsKey(n.getId())) {
+                nodes.put(n.getId(), new VisualNode(n, nl.point().x(), nl.point().y(), nl.depth()));
+            }
+        }
+
+        // Rebuild edges completely since they are stateless visual lines
+        edges.clear();
+        for (Node n : layoutMap.keySet()) {
+            VisualNode source = nodes.get(n.getId());
+            if (source != null) {
+                for (Edge edge : graph.getOutgoingEdges(n)) {
+                    VisualNode target = nodes.get(edge.target().getId());
+                    if (target != null) {
+                        edges.add(new VisualEdge(edge, source, target));
+                    }
+                }
+            }
+        }
+    }
 }

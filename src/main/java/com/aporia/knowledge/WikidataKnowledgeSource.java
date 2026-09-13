@@ -19,20 +19,23 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
     private static final int MAX_RELATIONS = 8;
     private final HttpTransport http;
     
+    private record PropertyMeta(String label, KnowledgeRelation.RelationCategory category) {}
+    
     // Whitelist of supported properties mapped to neutral Aporia relationship labels.
-    // We use LinkedHashMap to maintain a deterministic order of preference when trimming to MAX_RELATIONS.
-    private static final Map<String, String> SUPPORTED_PROPERTIES = new LinkedHashMap<>();
+    // We use LinkedHashMap to maintain a deterministic order of preference.
+    private static final Map<String, PropertyMeta> SUPPORTED_PROPERTIES = new LinkedHashMap<>();
     static {
-        SUPPORTED_PROPERTIES.put("P31", "INSTANCE_OF");
-        SUPPORTED_PROPERTIES.put("P279", "SUBCLASS_OF");
-        SUPPORTED_PROPERTIES.put("P361", "PART_OF");
-        SUPPORTED_PROPERTIES.put("P17", "COUNTRY");
-        SUPPORTED_PROPERTIES.put("P27", "CITIZENSHIP");
-        SUPPORTED_PROPERTIES.put("P106", "OCCUPATION");
-        SUPPORTED_PROPERTIES.put("P101", "FIELD_OF_WORK");
-        SUPPORTED_PROPERTIES.put("P136", "GENRE");
-        SUPPORTED_PROPERTIES.put("P170", "CREATOR");
-        SUPPORTED_PROPERTIES.put("P50", "AUTHOR");
+        SUPPORTED_PROPERTIES.put("P31", new PropertyMeta("INSTANCE_OF", KnowledgeRelation.RelationCategory.CONCEPTUAL));
+        SUPPORTED_PROPERTIES.put("P279", new PropertyMeta("SUBCLASS_OF", KnowledgeRelation.RelationCategory.CONCEPTUAL));
+        SUPPORTED_PROPERTIES.put("P361", new PropertyMeta("PART_OF", KnowledgeRelation.RelationCategory.CONCEPTUAL));
+        SUPPORTED_PROPERTIES.put("P101", new PropertyMeta("FIELD_OF_WORK", KnowledgeRelation.RelationCategory.CONCEPTUAL));
+        
+        SUPPORTED_PROPERTIES.put("P17", new PropertyMeta("COUNTRY", KnowledgeRelation.RelationCategory.CONTEXTUAL));
+        SUPPORTED_PROPERTIES.put("P27", new PropertyMeta("CITIZENSHIP", KnowledgeRelation.RelationCategory.CONTEXTUAL));
+        SUPPORTED_PROPERTIES.put("P106", new PropertyMeta("OCCUPATION", KnowledgeRelation.RelationCategory.CONTEXTUAL));
+        SUPPORTED_PROPERTIES.put("P136", new PropertyMeta("GENRE", KnowledgeRelation.RelationCategory.CONTEXTUAL));
+        SUPPORTED_PROPERTIES.put("P170", new PropertyMeta("CREATOR", KnowledgeRelation.RelationCategory.CONTEXTUAL));
+        SUPPORTED_PROPERTIES.put("P50", new PropertyMeta("AUTHOR", KnowledgeRelation.RelationCategory.CONTEXTUAL));
     }
 
     public WikidataKnowledgeSource(HttpTransport http) {
@@ -47,26 +50,37 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
         }
         
         try {
-            // 1. Resolve human query to Wikidata Q-ID via wbsearchentities
-            String searchUrl = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" 
-                + URLEncoder.encode(query, StandardCharsets.UTF_8) 
-                + "&language=en&format=json&limit=1";
+            String primaryId;
+            String primaryLabel;
+            String primaryDesc;
+            
+            // 1. Resolve human query to Wikidata Q-ID via wbsearchentities (skip if already Q-ID)
+            boolean isQID = query.matches("^Q\\d+$");
+            if (isQID) {
+                primaryId = query;
+                primaryLabel = query; // Updated later via batch fetch
+                primaryDesc = "No description available.";
+            } else {
+                String searchUrl = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" 
+                    + URLEncoder.encode(query, StandardCharsets.UTF_8) 
+                    + "&language=en&format=json&limit=1";
+                    
+                String searchJson = http.get(searchUrl);
+                Map<String, Object> searchRoot = (Map<String, Object>) MiniJson.parse(searchJson);
+                List<Object> searchArray = (List<Object>) searchRoot.get("search");
                 
-            String searchJson = http.get(searchUrl);
-            Map<String, Object> searchRoot = (Map<String, Object>) MiniJson.parse(searchJson);
-            List<Object> searchArray = (List<Object>) searchRoot.get("search");
-            
-            if (searchArray == null || searchArray.isEmpty()) {
-                throw new KnowledgeException("No Wikidata results found for: " + query);
+                if (searchArray == null || searchArray.isEmpty()) {
+                    throw new KnowledgeException("No Wikidata results found for: " + query);
+                }
+                
+                Map<String, Object> firstResult = (Map<String, Object>) searchArray.get(0);
+                primaryId = extractString(firstResult, "id", null);
+                if (primaryId == null) {
+                    throw new KnowledgeException("Wikidata search result missing ID for: " + query);
+                }
+                primaryLabel = extractString(firstResult, "label", primaryId);
+                primaryDesc = extractString(firstResult, "description", "No description available.");
             }
-            
-            Map<String, Object> firstResult = (Map<String, Object>) searchArray.get(0);
-            String primaryId = extractString(firstResult, "id", null);
-            if (primaryId == null) {
-                throw new KnowledgeException("Wikidata search result missing ID for: " + query);
-            }
-            String primaryLabel = extractString(firstResult, "label", primaryId);
-            String primaryDesc = extractString(firstResult, "description", "No description available.");
             
             KnowledgeConcept primaryConcept = new KnowledgeConcept(primaryId, primaryLabel, primaryDesc);
             
@@ -81,15 +95,24 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
             List<KnowledgeRelation> relations = new ArrayList<>();
             List<String> targetIds = new ArrayList<>();
             
+            int conceptualCount = 0;
+            
             if (claims != null) {
-                for (Map.Entry<String, String> prop : SUPPORTED_PROPERTIES.entrySet()) {
+                for (Map.Entry<String, PropertyMeta> prop : SUPPORTED_PROPERTIES.entrySet()) {
                     String propId = prop.getKey();
-                    String relType = prop.getValue();
+                    String relType = prop.getValue().label();
+                    KnowledgeRelation.RelationCategory category = prop.getValue().category();
                     
                     if (claims.containsKey(propId)) {
                         List<Object> snaks = (List<Object>) claims.get(propId);
+                        int contextualPerProp = 0;
                         for (Object snakObj : snaks) {
-                            if (targetIds.size() >= MAX_RELATIONS) break;
+                            if (category == KnowledgeRelation.RelationCategory.CONCEPTUAL && conceptualCount >= MAX_RELATIONS) {
+                                break; // Max conceptual limit reached
+                            }
+                            if (category == KnowledgeRelation.RelationCategory.CONTEXTUAL && contextualPerProp >= 3) {
+                                break; // Cap contextual items per property so graph isn't flooded with 50 authors
+                            }
                             
                             Map<String, Object> snakMap = (Map<String, Object>) snakObj;
                             Map<String, Object> mainsnak = (Map<String, Object>) snakMap.get("mainsnak");
@@ -104,19 +127,27 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
                             String targetId = extractString(value, "id", null);
                             if (targetId != null && !targetIds.contains(targetId)) {
                                 targetIds.add(targetId);
-                                relations.add(new KnowledgeRelation(primaryId, targetId, relType));
+                                relations.add(new KnowledgeRelation(primaryId, targetId, relType, category));
+                                if (category == KnowledgeRelation.RelationCategory.CONCEPTUAL) {
+                                    conceptualCount++;
+                                } else {
+                                    contextualPerProp++;
+                                }
                             }
                         }
                     }
-                    if (targetIds.size() >= MAX_RELATIONS) break;
                 }
             }
             
             List<KnowledgeConcept> relatedConcepts = new ArrayList<>();
+            List<String> fetchIds = new ArrayList<>(targetIds);
+            if (isQID) {
+                fetchIds.add(primaryId);
+            }
             
             // 3. Batch fetch labels/descriptions for all target Q-IDs efficiently
-            if (!targetIds.isEmpty()) {
-                String idsParam = String.join("|", targetIds);
+            if (!fetchIds.isEmpty()) {
+                String idsParam = String.join("|", fetchIds);
                 String batchUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" 
                     + URLEncoder.encode(idsParam, StandardCharsets.UTF_8) 
                     + "&languages=en&props=" + URLEncoder.encode("labels|descriptions", StandardCharsets.UTF_8) + "&format=json";
@@ -126,6 +157,15 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
                 Map<String, Object> entities = (Map<String, Object>) batchRoot.get("entities");
                 
                 if (entities != null) {
+                    if (isQID) {
+                        Map<String, Object> primaryData = (Map<String, Object>) entities.get(primaryId);
+                        if (primaryData != null) {
+                            String fetchedLabel = extractLocalisedString(primaryData, "labels", primaryId);
+                            String fetchedDesc = extractLocalisedString(primaryData, "descriptions", "No description available.");
+                            primaryConcept = new KnowledgeConcept(primaryId, fetchedLabel, fetchedDesc);
+                        }
+                    }
+                    
                     for (String tId : targetIds) {
                         Map<String, Object> entityData = (Map<String, Object>) entities.get(tId);
                         if (entityData != null) {

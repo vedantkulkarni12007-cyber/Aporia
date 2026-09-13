@@ -61,7 +61,7 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>aporia/aporia.AporiaApp</mainClass>
+                    <mainClass>com.aporia/com.aporia.app.AporiaApp</mainClass>
                 </configuration>
             </plugin>
             <plugin>

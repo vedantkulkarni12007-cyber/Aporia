@@ -1,13 +1,12 @@
-package aporia;
+package com.aporia.app;
 
 import com.aporia.graph.Graph;
-import com.aporia.graph.layout.Point;
 import com.aporia.model.Edge;
 import com.aporia.model.Node;
 import com.aporia.ui.camera.Camera;
 import com.aporia.ui.graph.GraphRenderer;
+import com.aporia.ui.graph.InteractionHandler;
 import com.aporia.ui.state.VisualGraph;
-import com.aporia.ui.state.VisualNode;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.scene.Scene;
@@ -16,9 +15,6 @@ import javafx.scene.layout.Pane;
 import javafx.stage.Stage;
 
 public class AporiaApp extends Application {
-
-    private double lastMouseX;
-    private double lastMouseY;
 
     @Override
     public void start(Stage primaryStage) {
@@ -55,40 +51,8 @@ public class AporiaApp extends Application {
         canvas.widthProperty().bind(root.widthProperty());
         canvas.heightProperty().bind(root.heightProperty());
 
-        // 5. Input Handling
-        canvas.setOnMousePressed(event -> {
-            lastMouseX = event.getX();
-            lastMouseY = event.getY();
-
-            // Check for node selection
-            Point worldClick = camera.screenToWorld(event.getX(), event.getY());
-            VisualNode clickedNode = null;
-            
-            // 20.0 is NODE_RADIUS
-            for (VisualNode vNode : visualGraph.getNodes()) {
-                double dx = vNode.getX() - worldClick.x();
-                double dy = vNode.getY() - worldClick.y();
-                if (Math.hypot(dx, dy) <= 20.0) {
-                    clickedNode = vNode;
-                    break;
-                }
-            }
-            
-            visualGraph.selectNode(clickedNode);
-        });
-
-        canvas.setOnMouseDragged(event -> {
-            double dx = event.getX() - lastMouseX;
-            double dy = event.getY() - lastMouseY;
-            camera.pan(dx, dy);
-            lastMouseX = event.getX();
-            lastMouseY = event.getY();
-        });
-
-        canvas.setOnScroll(event -> {
-            double zoomFactor = event.getDeltaY() > 0 ? 1.1 : 0.9;
-            camera.zoom(zoomFactor, event.getX(), event.getY());
-        });
+        // 5. Input Handling (Delegated)
+        new InteractionHandler(canvas, camera, visualGraph);
 
         // 6. Animation Loop
         AnimationTimer timer = new AnimationTimer() {

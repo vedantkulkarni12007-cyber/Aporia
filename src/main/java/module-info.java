@@ -1,6 +1,6 @@
-module aporia {
+module com.aporia {
     requires javafx.controls;
     requires javafx.graphics;
 
-    exports aporia;
+    exports com.aporia.app;
 }

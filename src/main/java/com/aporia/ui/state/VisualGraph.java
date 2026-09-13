@@ -19,11 +19,13 @@ public class VisualGraph {
     private final Map<String, VisualNode> nodes = new HashMap<>();
     private final List<VisualEdge> edges = new ArrayList<>();
     private VisualNode selectedNode = null;
+    private VisualNode hoveredNode = null;
 
     public void initializeFromDomain(Graph graph, Node root) {
         nodes.clear();
         edges.clear();
         selectedNode = null;
+        hoveredNode = null;
 
         Map<Node, NodeLayout> layout = RadialLayout.calculate(graph, root, 150.0);
 
@@ -66,5 +68,13 @@ public class VisualGraph {
 
     public VisualNode getSelectedNode() {
         return selectedNode;
+    }
+
+    public void hoverNode(VisualNode node) {
+        this.hoveredNode = node;
+    }
+
+    public VisualNode getHoveredNode() {
+        return hoveredNode;
     }
 }

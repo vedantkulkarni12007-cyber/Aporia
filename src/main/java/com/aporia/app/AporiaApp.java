@@ -18,7 +18,10 @@ public class AporiaApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        // 1. Create Sample Graph
+        // 1. Reduced Motion Preference
+        boolean reducedMotion = false; // Simple flag for now
+
+        // 2. Create Sample Graph
         Graph graph = new Graph();
         Node astronomy = new Node("astronomy", "Astronomy");
         Node physics = new Node("physics", "Physics");
@@ -37,28 +40,44 @@ public class AporiaApp extends Application {
         graph.addEdge(new Edge(physics, gravity, "EXPLAINS"));
         graph.addEdge(new Edge(gravity, relativity, "RELATED"));
 
-        // 2. Initialize Visual State
+        // 3. Initialize Visual State
         VisualGraph visualGraph = new VisualGraph();
         visualGraph.initializeFromDomain(graph, astronomy);
 
-        // 3. Setup Camera and Renderer
+        // 4. Setup Camera and Renderer
         Camera camera = new Camera();
+        camera.setReducedMotion(reducedMotion);
+        
         Canvas canvas = new Canvas(800, 600);
         GraphRenderer renderer = new GraphRenderer(canvas, visualGraph, camera);
+        renderer.setReducedMotion(reducedMotion);
 
-        // 4. Setup Resizable Pane
+        // 5. Setup Resizable Pane
         Pane root = new Pane(canvas);
         canvas.widthProperty().bind(root.widthProperty());
         canvas.heightProperty().bind(root.heightProperty());
 
-        // 5. Input Handling (Delegated)
+        // 6. Input Handling
         new InteractionHandler(canvas, camera, visualGraph);
 
-        // 6. Animation Loop
+        // 7. Animation Loop
         AnimationTimer timer = new AnimationTimer() {
+            private long lastTime = -1;
+            private final long startTime = System.nanoTime();
+
             @Override
             public void handle(long now) {
-                renderer.draw();
+                if (lastTime == -1) {
+                    lastTime = now;
+                    return;
+                }
+                
+                double dt = (now - lastTime) / 1_000_000_000.0;
+                lastTime = now;
+                double elapsedSeconds = (now - startTime) / 1_000_000_000.0;
+                
+                camera.update(dt);
+                renderer.draw(elapsedSeconds);
             }
         };
         timer.start();

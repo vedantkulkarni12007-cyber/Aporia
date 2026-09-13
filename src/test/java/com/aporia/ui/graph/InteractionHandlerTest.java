@@ -18,6 +18,7 @@ public class InteractionHandlerTest {
     @BeforeEach
     public void setUp() {
         camera = new Camera();
+        camera.setReducedMotion(true);
         camera.updateViewport(800, 600); // screen center is 400,300
 
         Graph graph = new Graph();

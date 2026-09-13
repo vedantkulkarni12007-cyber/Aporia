@@ -27,6 +27,7 @@ public class GraphRenderer {
     private static final Color ROOT_COLOR = Color.web("#B59E80");
     private static final Color NODE_COLOR = Color.web("#A69F91");
     private static final Color NODE_SELECTED_COLOR = Color.web("#F0EAD6");
+    private static final Color NODE_HOVER_COLOR = Color.web("#BDB6A8"); // Slightly brighter than A69F91
     private static final Color TEXT_COLOR = Color.web("#D4C8B8");
     
     // System font fallback for sans-serif
@@ -34,6 +35,8 @@ public class GraphRenderer {
     
     private static final double BASE_RADIUS = 24.0;
     private static final double BASE_FONT_SIZE = 14.0;
+    
+    private boolean reducedMotion = false;
 
     public GraphRenderer(Canvas canvas, VisualGraph visualGraph, Camera camera) {
         this.canvas = canvas;
@@ -41,7 +44,15 @@ public class GraphRenderer {
         this.camera = camera;
     }
 
-    public void draw() {
+    public void setReducedMotion(boolean reducedMotion) {
+        this.reducedMotion = reducedMotion;
+    }
+
+    /**
+     * Renders the current visual state.
+     * @param timeSeconds The total elapsed time in seconds, used for continuous breathing animations.
+     */
+    public void draw(double timeSeconds) {
         GraphicsContext gc = canvas.getGraphicsContext2D();
         double width = canvas.getWidth();
         double height = canvas.getHeight();
@@ -70,18 +81,31 @@ public class GraphRenderer {
         for (VisualNode node : visualGraph.getNodes()) {
             Point p = camera.worldToScreen(node.getX(), node.getY());
             int depth = node.getDepth();
+            boolean isSelected = node.isSelected();
+            boolean isHovered = (node == visualGraph.getHoveredNode());
             
             // Depth Hierarchy Math
-            // Decrease size, opacity, and text size based on depth
             double scale = Math.max(0.4, 1.0 - (depth * 0.15));
-            double radius = BASE_RADIUS * scale * zoom;
             double opacity = Math.max(0.3, 1.0 - (depth * 0.2));
+            
+            // Subtle breathing effect for selected or root nodes (4s cycle)
+            double breathingScale = 1.0;
+            if (!reducedMotion && (isSelected || depth == 0)) {
+                breathingScale = 1.0 + Math.sin(timeSeconds * (2 * Math.PI / 4.0)) * 0.015;
+            }
+            
+            // Subtle hover effect
+            double hoverScale = isHovered ? 1.05 : 1.0;
+            
+            double radius = BASE_RADIUS * scale * zoom * breathingScale * hoverScale;
 
             gc.setGlobalAlpha(opacity);
             
             // Determine Color
-            if (node.isSelected()) {
+            if (isSelected) {
                 gc.setFill(NODE_SELECTED_COLOR);
+            } else if (isHovered) {
+                gc.setFill(NODE_HOVER_COLOR);
             } else if (depth == 0) {
                 gc.setFill(ROOT_COLOR);
             } else {
@@ -92,7 +116,7 @@ public class GraphRenderer {
             gc.fillOval(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
 
             // Draw label
-            double fontSize = BASE_FONT_SIZE * scale * zoom;
+            double fontSize = BASE_FONT_SIZE * scale * zoom * hoverScale;
             if (fontSize > 4.0) { // Culling tiny unreadable text
                 gc.setFill(TEXT_COLOR);
                 gc.setFont(Font.font(FONT_FAMILY, fontSize));

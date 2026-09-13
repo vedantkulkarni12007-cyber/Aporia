@@ -9,7 +9,7 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 
 /**
- * Handles mouse interaction (pan, zoom, selection) for the graph canvas.
+ * Handles mouse interaction (pan, zoom, selection, hover) for the graph canvas.
  */
 public class InteractionHandler {
     private final Camera camera;
@@ -25,6 +25,7 @@ public class InteractionHandler {
         canvas.setOnMousePressed(this::handleMousePressed);
         canvas.setOnMouseDragged(this::handleMouseDragged);
         canvas.setOnScroll(this::handleScroll);
+        canvas.setOnMouseMoved(this::handleMouseMoved);
     }
 
     private void handleMousePressed(MouseEvent event) {
@@ -41,16 +42,28 @@ public class InteractionHandler {
         camera.pan(dx, dy);
         lastMouseX = event.getX();
         lastMouseY = event.getY();
+        
+        // Disable hover effect while dragging
+        visualGraph.hoverNode(null);
+    }
+
+    private void handleMouseMoved(MouseEvent event) {
+        VisualNode hovered = hitTest(event.getX(), event.getY(), camera, visualGraph);
+        visualGraph.hoverNode(hovered);
     }
 
     private void handleScroll(ScrollEvent event) {
         double zoomFactor = event.getDeltaY() > 0 ? 1.1 : 0.9;
         camera.zoom(zoomFactor, event.getX(), event.getY());
+        
+        // Re-calculate hover immediately after scrolling
+        VisualNode hovered = hitTest(event.getX(), event.getY(), camera, visualGraph);
+        visualGraph.hoverNode(hovered);
     }
 
     /**
-     * Determines which node is clicked based on screen coordinates.
-     * This logic is extracted to be independently testable.
+     * Determines which node is clicked/hovered based on screen coordinates.
+     * This logic is independently testable.
      */
     public static VisualNode hitTest(double screenX, double screenY, Camera camera, VisualGraph visualGraph) {
         Point worldClick = camera.screenToWorld(screenX, screenY);
@@ -58,7 +71,7 @@ public class InteractionHandler {
             double dx = vNode.getX() - worldClick.x();
             double dy = vNode.getY() - worldClick.y();
             
-            // Calculate actual world radius based on depth
+            // Match the actual rendered radius formula from GraphRenderer
             double scale = Math.max(0.4, 1.0 - (vNode.getDepth() * 0.15));
             double nodeRadius = BASE_HIT_RADIUS * scale;
             

@@ -46,6 +46,17 @@ public class Camera {
         }
     }
 
+    public void reset() {
+        this.targetXOffset = 0;
+        this.targetYOffset = 0;
+        this.targetZoom = 1.0;
+        if (reducedMotion) {
+            this.currentXOffset = 0;
+            this.currentYOffset = 0;
+            this.currentZoom = 1.0;
+        }
+    }
+
     public void zoom(double factor, double mouseScreenX, double mouseScreenY) {
         // Pivot around the mouse coordinate in world space
         Point worldBefore = screenToWorld(mouseScreenX, mouseScreenY);

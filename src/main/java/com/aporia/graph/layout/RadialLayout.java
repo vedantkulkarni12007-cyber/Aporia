@@ -15,20 +15,20 @@ import java.util.Set;
 
 /**
  * A deterministic radial layout algorithm.
- * Places the root node at (0,0).
+ * Places the root node at (0,0) and assigns depth.
  * Distributes subsequent depths in concentric circles.
  */
 public class RadialLayout {
 
     /**
-     * Calculates layout coordinates for the given graph starting from a root node.
+     * Calculates layout coordinates and depth for the given graph starting from a root node.
      *
      * @param graph        The graph to layout.
      * @param root         The center node.
      * @param layerSpacing Distance between concentric depth layers.
-     * @return A map of nodes to their calculated world coordinates.
+     * @return A map of nodes to their calculated layout information.
      */
-    public static Map<Node, Point> calculate(Graph graph, Node root, double layerSpacing) {
+    public static Map<Node, NodeLayout> calculate(Graph graph, Node root, double layerSpacing) {
         if (graph == null) {
             throw new IllegalArgumentException("Graph cannot be null");
         }
@@ -39,7 +39,7 @@ public class RadialLayout {
             throw new IllegalArgumentException("Root node is not in the graph");
         }
 
-        Map<Node, Point> positions = new HashMap<>();
+        Map<Node, NodeLayout> layoutResult = new HashMap<>();
         Map<Integer, List<Node>> depthGroups = new HashMap<>();
         Map<Node, Integer> nodeDepths = new HashMap<>();
 
@@ -51,14 +51,8 @@ public class RadialLayout {
         visited.add(root.getId());
         nodeDepths.put(root, 0);
 
-        // Add remaining disconnected nodes if any later, but primarily layout connected component
-        List<Node> allNodes = new ArrayList<>();
-        // To make it deterministic, we should process nodes in a predictable order.
-        // The graph's traversal itself is deterministic based on insertion order.
-
         while (!queue.isEmpty()) {
             Node current = queue.poll();
-            allNodes.add(current);
             int depth = nodeDepths.get(current);
 
             depthGroups.computeIfAbsent(depth, k -> new ArrayList<>()).add(current);
@@ -80,7 +74,7 @@ public class RadialLayout {
 
             if (depth == 0) {
                 // Root is at center
-                positions.put(nodesAtDepth.get(0), new Point(0, 0));
+                layoutResult.put(nodesAtDepth.get(0), new NodeLayout(new Point(0, 0), depth));
                 continue;
             }
 
@@ -90,14 +84,13 @@ public class RadialLayout {
 
             for (int i = 0; i < count; i++) {
                 Node n = nodesAtDepth.get(i);
-                // Deterministic angle based on index
                 double angle = i * angleStep;
                 double x = radius * Math.cos(angle);
                 double y = radius * Math.sin(angle);
-                positions.put(n, new Point(x, y));
+                layoutResult.put(n, new NodeLayout(new Point(x, y), depth));
             }
         }
 
-        return positions;
+        return layoutResult;
     }
 }

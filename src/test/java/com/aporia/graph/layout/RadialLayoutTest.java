@@ -42,11 +42,12 @@ public class RadialLayoutTest {
     }
 
     @Test
-    public void testRootPosition() {
-        Map<Node, Point> layout = RadialLayout.calculate(graph, root, 100);
-        Point p = layout.get(root);
-        assertEquals(0.0, p.x(), 0.001);
-        assertEquals(0.0, p.y(), 0.001);
+    public void testRootPositionAndDepth() {
+        Map<Node, NodeLayout> layout = RadialLayout.calculate(graph, root, 100);
+        NodeLayout nl = layout.get(root);
+        assertEquals(0.0, nl.point().x(), 0.001);
+        assertEquals(0.0, nl.point().y(), 0.001);
+        assertEquals(0, nl.depth());
     }
 
     @Test
@@ -54,17 +55,20 @@ public class RadialLayoutTest {
         graph.addEdge(new Edge(root, child1, "REL"));
         graph.addEdge(new Edge(child1, grandchild1, "REL"));
 
-        Map<Node, Point> layout = RadialLayout.calculate(graph, root, 150);
+        Map<Node, NodeLayout> layout = RadialLayout.calculate(graph, root, 150);
         
-        Point pRoot = layout.get(root);
-        Point pChild1 = layout.get(child1);
-        Point pGrandchild = layout.get(grandchild1);
+        NodeLayout nlRoot = layout.get(root);
+        NodeLayout nlChild1 = layout.get(child1);
+        NodeLayout nlGrandchild = layout.get(grandchild1);
 
-        double distC1 = Math.hypot(pChild1.x() - pRoot.x(), pChild1.y() - pRoot.y());
-        double distGC1 = Math.hypot(pGrandchild.x() - pRoot.x(), pGrandchild.y() - pRoot.y());
+        double distC1 = Math.hypot(nlChild1.point().x() - nlRoot.point().x(), nlChild1.point().y() - nlRoot.point().y());
+        double distGC1 = Math.hypot(nlGrandchild.point().x() - nlRoot.point().x(), nlGrandchild.point().y() - nlRoot.point().y());
 
         assertEquals(150.0, distC1, 0.001);
         assertEquals(300.0, distGC1, 0.001);
+        
+        assertEquals(1, nlChild1.depth());
+        assertEquals(2, nlGrandchild.depth());
     }
 
     @Test
@@ -72,16 +76,16 @@ public class RadialLayoutTest {
         graph.addEdge(new Edge(root, child1, "REL"));
         graph.addEdge(new Edge(root, child2, "REL"));
 
-        Map<Node, Point> layout = RadialLayout.calculate(graph, root, 100);
+        Map<Node, NodeLayout> layout = RadialLayout.calculate(graph, root, 100);
         
-        Point pC1 = layout.get(child1);
-        Point pC2 = layout.get(child2);
+        NodeLayout nlC1 = layout.get(child1);
+        NodeLayout nlC2 = layout.get(child2);
 
         // Should be on opposite sides (angle 0 and PI)
-        assertEquals(100.0, pC1.x(), 0.001);
-        assertEquals(0.0, pC1.y(), 0.001);
+        assertEquals(100.0, nlC1.point().x(), 0.001);
+        assertEquals(0.0, nlC1.point().y(), 0.001);
 
-        assertEquals(-100.0, pC2.x(), 0.001);
-        assertEquals(0.0, pC2.y(), 0.001);
+        assertEquals(-100.0, nlC2.point().x(), 0.001);
+        assertEquals(0.0, nlC2.point().y(), 0.001);
     }
 }

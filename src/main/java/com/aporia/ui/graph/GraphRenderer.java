@@ -14,20 +14,26 @@ import javafx.geometry.VPos;
 
 /**
  * Responsible for rendering the VisualGraph using JavaFX Canvas.
+ * Implements the "Archival Observatory" visual identity.
  */
 public class GraphRenderer {
     private final Canvas canvas;
     private final VisualGraph visualGraph;
     private final Camera camera;
 
-    private static final double NODE_RADIUS = 20.0;
+    // Archival Observatory Palette
+    private static final Color BG_COLOR = Color.web("#1A1A18");
+    private static final Color EDGE_COLOR = Color.rgb(168, 149, 122, 0.25);
+    private static final Color ROOT_COLOR = Color.web("#B59E80");
+    private static final Color NODE_COLOR = Color.web("#A69F91");
+    private static final Color NODE_SELECTED_COLOR = Color.web("#F0EAD6");
+    private static final Color TEXT_COLOR = Color.web("#D4C8B8");
     
-    // Neutral visual style for Phase 2
-    private static final Color BG_COLOR = Color.web("#222222");
-    private static final Color EDGE_COLOR = Color.web("#555555");
-    private static final Color NODE_COLOR = Color.web("#888888");
-    private static final Color NODE_SELECTED_COLOR = Color.web("#EEEEEE");
-    private static final Color TEXT_COLOR = Color.web("#DDDDDD");
+    // System font fallback for sans-serif
+    private static final String FONT_FAMILY = "SansSerif";
+    
+    private static final double BASE_RADIUS = 24.0;
+    private static final double BASE_FONT_SIZE = 14.0;
 
     public GraphRenderer(Canvas canvas, VisualGraph visualGraph, Camera camera) {
         this.canvas = canvas;
@@ -46,9 +52,11 @@ public class GraphRenderer {
         gc.setFill(BG_COLOR);
         gc.fillRect(0, 0, width, height);
 
+        double zoom = camera.getZoom();
+
         // Draw edges
         gc.setStroke(EDGE_COLOR);
-        gc.setLineWidth(1.5 * camera.getZoom());
+        gc.setLineWidth(1.5 * zoom);
         for (VisualEdge edge : visualGraph.getEdges()) {
             Point p1 = camera.worldToScreen(edge.getSource().getX(), edge.getSource().getY());
             Point p2 = camera.worldToScreen(edge.getTarget().getX(), edge.getTarget().getY());
@@ -59,24 +67,39 @@ public class GraphRenderer {
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setTextBaseline(VPos.CENTER);
         
-        double currentRadius = NODE_RADIUS * camera.getZoom();
-        
         for (VisualNode node : visualGraph.getNodes()) {
             Point p = camera.worldToScreen(node.getX(), node.getY());
+            int depth = node.getDepth();
             
-            // Draw circle
+            // Depth Hierarchy Math
+            // Decrease size, opacity, and text size based on depth
+            double scale = Math.max(0.4, 1.0 - (depth * 0.15));
+            double radius = BASE_RADIUS * scale * zoom;
+            double opacity = Math.max(0.3, 1.0 - (depth * 0.2));
+
+            gc.setGlobalAlpha(opacity);
+            
+            // Determine Color
             if (node.isSelected()) {
                 gc.setFill(NODE_SELECTED_COLOR);
+            } else if (depth == 0) {
+                gc.setFill(ROOT_COLOR);
             } else {
                 gc.setFill(NODE_COLOR);
             }
-            gc.fillOval(p.x() - currentRadius, p.y() - currentRadius, currentRadius * 2, currentRadius * 2);
+            
+            // Draw circle
+            gc.fillOval(p.x() - radius, p.y() - radius, radius * 2, radius * 2);
 
             // Draw label
-            gc.setFill(TEXT_COLOR);
-            gc.setFont(new Font(12 * camera.getZoom()));
-            // Position label below the node
-            gc.fillText(node.getDomainNode().getLabel(), p.x(), p.y() + currentRadius + (10 * camera.getZoom()));
+            double fontSize = BASE_FONT_SIZE * scale * zoom;
+            if (fontSize > 4.0) { // Culling tiny unreadable text
+                gc.setFill(TEXT_COLOR);
+                gc.setFont(Font.font(FONT_FAMILY, fontSize));
+                gc.fillText(node.getDomainNode().getLabel(), p.x(), p.y() + radius + (10 * zoom));
+            }
+            
+            gc.setGlobalAlpha(1.0); // Reset alpha
         }
     }
 }

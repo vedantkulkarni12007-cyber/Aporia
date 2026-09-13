@@ -38,8 +38,8 @@ public class InteractionHandlerTest {
 
     @Test
     public void testHitDetectionMiss() {
-        // Outside the 20.0 radius (world) which maps directly 1:1 when zoom is 1.0
-        VisualNode miss = InteractionHandler.hitTest(421, 300, camera, visualGraph);
+        // Outside the 24.0 radius (world) which maps directly 1:1 when zoom is 1.0
+        VisualNode miss = InteractionHandler.hitTest(425, 300, camera, visualGraph);
         assertNull(miss);
     }
     

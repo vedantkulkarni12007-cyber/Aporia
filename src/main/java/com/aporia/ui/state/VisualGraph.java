@@ -1,7 +1,7 @@
 package com.aporia.ui.state;
 
 import com.aporia.graph.Graph;
-import com.aporia.graph.layout.Point;
+import com.aporia.graph.layout.NodeLayout;
 import com.aporia.graph.layout.RadialLayout;
 import com.aporia.model.Edge;
 import com.aporia.model.Node;
@@ -25,13 +25,13 @@ public class VisualGraph {
         edges.clear();
         selectedNode = null;
 
-        Map<Node, Point> layout = RadialLayout.calculate(graph, root, 150.0);
+        Map<Node, NodeLayout> layout = RadialLayout.calculate(graph, root, 150.0);
 
         // Create visual nodes
-        for (Map.Entry<Node, Point> entry : layout.entrySet()) {
+        for (Map.Entry<Node, NodeLayout> entry : layout.entrySet()) {
             Node n = entry.getKey();
-            Point p = entry.getValue();
-            nodes.put(n.getId(), new VisualNode(n, p.x(), p.y()));
+            NodeLayout nl = entry.getValue();
+            nodes.put(n.getId(), new VisualNode(n, nl.point().x(), nl.point().y(), nl.depth()));
         }
 
         // Create visual edges

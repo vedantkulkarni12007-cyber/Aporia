@@ -16,7 +16,7 @@ public class InteractionHandler {
     private final VisualGraph visualGraph;
     private double lastMouseX;
     private double lastMouseY;
-    private static final double NODE_HIT_RADIUS = 20.0;
+    private static final double BASE_HIT_RADIUS = 24.0;
 
     public InteractionHandler(Canvas canvas, Camera camera, VisualGraph visualGraph) {
         this.camera = camera;
@@ -57,7 +57,12 @@ public class InteractionHandler {
         for (VisualNode vNode : visualGraph.getNodes()) {
             double dx = vNode.getX() - worldClick.x();
             double dy = vNode.getY() - worldClick.y();
-            if (Math.hypot(dx, dy) <= NODE_HIT_RADIUS) {
+            
+            // Calculate actual world radius based on depth
+            double scale = Math.max(0.4, 1.0 - (vNode.getDepth() * 0.15));
+            double nodeRadius = BASE_HIT_RADIUS * scale;
+            
+            if (Math.hypot(dx, dy) <= nodeRadius) {
                 return vNode;
             }
         }

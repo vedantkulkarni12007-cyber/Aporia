@@ -72,7 +72,7 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
             
             // 2. Fetch structured claims for the resolved Q-ID via wbgetclaims
             String claimsUrl = "https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=" 
-                + primaryId + "&format=json";
+                + URLEncoder.encode(primaryId, StandardCharsets.UTF_8) + "&format=json";
             
             String claimsJson = http.get(claimsUrl);
             Map<String, Object> claimsRoot = (Map<String, Object>) MiniJson.parse(claimsJson);
@@ -119,7 +119,7 @@ public class WikidataKnowledgeSource implements KnowledgeSource {
                 String idsParam = String.join("|", targetIds);
                 String batchUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" 
                     + URLEncoder.encode(idsParam, StandardCharsets.UTF_8) 
-                    + "&languages=en&props=labels|descriptions&format=json";
+                    + "&languages=en&props=" + URLEncoder.encode("labels|descriptions", StandardCharsets.UTF_8) + "&format=json";
                 
                 String batchJson = http.get(batchUrl);
                 Map<String, Object> batchRoot = (Map<String, Object>) MiniJson.parse(batchJson);

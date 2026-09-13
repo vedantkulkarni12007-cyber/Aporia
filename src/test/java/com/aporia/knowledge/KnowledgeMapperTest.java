@@ -1,6 +1,7 @@
 package com.aporia.knowledge;
 
 import com.aporia.graph.Graph;
+import com.aporia.model.Node;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,6 +18,10 @@ public class KnowledgeMapperTest {
         assertTrue(graph.containsNode("astronomy"));
         assertTrue(graph.containsNode("physics"));
         assertTrue(graph.containsNode("stars"));
+        
+        Node astronomyNode = graph.getNode("astronomy");
+        assertNotNull(astronomyNode);
+        assertNotNull(astronomyNode.getDescription());
         
         assertEquals(3, graph.getNodeCount());
         assertEquals(2, graph.getOutgoingEdges(graph.getNode("astronomy")).size());

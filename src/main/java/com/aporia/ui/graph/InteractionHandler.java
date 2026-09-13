@@ -50,7 +50,7 @@ public class InteractionHandler {
         double dy = event.getY() - pressedY;
         if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) {
             VisualNode clickedNode = hitTest(event.getX(), event.getY(), camera, visualGraph);
-            if (clickedNode != null && onNodeClicked != null) {
+            if (onNodeClicked != null) {
                 onNodeClicked.accept(clickedNode);
             }
         }

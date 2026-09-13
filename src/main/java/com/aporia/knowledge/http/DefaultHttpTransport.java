@@ -27,7 +27,7 @@ public class DefaultHttpTransport implements HttpTransport {
             .uri(URI.create(url))
             .timeout(Duration.ofSeconds(10))
             // Wikipedia requires a descriptive User-Agent
-            .header("User-Agent", "Aporia/1.0 (Open Source Knowledge Graph)")
+            .header("User-Agent", "Aporia/1.0 (https://github.com/vedantkulkarni12007-cyber/Aporia)")
             .header("Accept", "application/json")
             .GET()
             .build();

@@ -16,10 +16,12 @@ import com.aporia.knowledge.WikipediaKnowledgeSource;
 import com.aporia.knowledge.http.DefaultHttpTransport;
 import com.aporia.knowledge.http.HttpTransport;
 
+import com.aporia.ui.panels.ConceptDetailPanel;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.Button;
@@ -37,6 +39,7 @@ public class AporiaApp extends Application {
     private Camera camera;
     private GraphRenderer renderer;
     private KnowledgeAggregator aggregator;
+    private ConceptDetailPanel detailPanel;
     
     // Request counter to handle search race conditions
     private int searchRequestCounter = 0;
@@ -69,7 +72,7 @@ public class AporiaApp extends Application {
         renderer = new GraphRenderer(canvas, visualGraph, camera);
         renderer.setReducedMotion(reducedMotion);
 
-        // 4. Input Handling for Graph Interaction (click to explore)
+        // 4. Input Handling for Graph Interaction (click to select)
         new InteractionHandler(canvas, camera, visualGraph, this::handleNodeClick);
 
         // 5. Setup Minimal Search UI
@@ -94,7 +97,7 @@ public class AporiaApp extends Application {
         statusLabel.setStyle("-fx-text-fill: #A69F91;");
         
         HBox searchBox = new HBox(10, backBtn, searchField, searchBtn, statusLabel);
-        searchBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        searchBox.setAlignment(Pos.CENTER_LEFT);
         searchBox.setPadding(new Insets(20));
         searchBox.setPickOnBounds(false); // Let mouse events pass through to canvas
         
@@ -107,14 +110,19 @@ public class AporiaApp extends Application {
 
         searchBtn.setOnAction(e -> performSearch.run());
         searchField.setOnAction(e -> performSearch.run());
+        
+        // 5.1 Setup Concept Detail Panel
+        detailPanel = new ConceptDetailPanel(query -> exploreConcept(query, true));
 
         // 6. Setup Layout
         StackPane root = new StackPane();
         canvas.widthProperty().bind(root.widthProperty());
         canvas.heightProperty().bind(root.heightProperty());
         
-        root.getChildren().addAll(canvas, searchBox);
-        StackPane.setAlignment(searchBox, javafx.geometry.Pos.TOP_LEFT);
+        root.getChildren().addAll(canvas, searchBox, detailPanel);
+        StackPane.setAlignment(searchBox, Pos.TOP_LEFT);
+        StackPane.setAlignment(detailPanel, Pos.CENTER_RIGHT);
+        StackPane.setMargin(detailPanel, new Insets(80, 20, 20, 20));
 
         // 7. Animation Loop
         AnimationTimer timer = new AnimationTimer() {
@@ -152,10 +160,11 @@ public class AporiaApp extends Application {
     }
     
     private void handleNodeClick(VisualNode node) {
-        if (isExploring) return;
-        if (node.getDepth() == 0) return; // Do not reload the exact same root concept
-        
-        exploreConcept(node.getDomainNode().getLabel(), true);
+        if (node == null) {
+            detailPanel.update(null, null);
+            return;
+        }
+        detailPanel.update(node, visualGraph);
     }
     
     /**
@@ -228,9 +237,13 @@ public class AporiaApp extends Application {
         visualGraph.initializeFromDomain(newGraph, rootNode);
         
         // Provide immediate user feedback by selecting the central node
-        visualGraph.selectNode(visualGraph.getNodes().stream()
+        VisualNode rootVisualNode = visualGraph.getNodes().stream()
             .filter(vn -> vn.getDomainNode().equals(rootNode))
-            .findFirst().orElse(null));
+            .findFirst().orElse(null);
+        visualGraph.selectNode(rootVisualNode);
+        
+        // Auto-update the detail panel for the new root
+        detailPanel.update(rootVisualNode, visualGraph);
         
         // Recenter camera to the newly layout-ed root node
         camera.reset();

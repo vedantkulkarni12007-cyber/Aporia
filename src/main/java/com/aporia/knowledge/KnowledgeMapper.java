@@ -52,9 +52,8 @@ public class KnowledgeMapper {
 
     private static void addConceptAsNode(Graph graph, KnowledgeConcept concept) {
         if (!graph.containsNode(concept.id())) {
-            // Note: The rich semantic 'description' field of KnowledgeConcept is intentionally 
-            // omitted here because Node is purely an abstract mathematical vertex.
-            graph.addNode(new Node(concept.id(), concept.title()));
+            // Passing the description to retain knowledge metadata for the UI detail panel
+            graph.addNode(new Node(concept.id(), concept.title(), concept.description()));
         }
     }
 }

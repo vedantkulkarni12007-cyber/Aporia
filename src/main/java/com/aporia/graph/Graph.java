@@ -90,11 +90,13 @@ public class Graph {
     public Graph copy() {
         Graph clone = new Graph();
         for (Node n : this.nodes.values()) {
-            clone.addNode(n); // safe because Node is immutable
+            clone.addNode(n.copy()); 
         }
         for (List<Edge> edges : this.outgoingEdges.values()) {
             for (Edge e : edges) {
-                clone.addEdge(e); // safe because Edge is immutable
+                Node newSource = clone.getNode(e.source().getId());
+                Node newTarget = clone.getNode(e.target().getId());
+                clone.addEdge(new Edge(newSource, newTarget, e.relationship())); 
             }
         }
         return clone;

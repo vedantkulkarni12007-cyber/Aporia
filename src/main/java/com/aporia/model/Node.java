@@ -1,5 +1,6 @@
 package com.aporia.model;
 
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -10,6 +11,8 @@ public class Node {
     private final String id;
     private final String label;
     private final String description;
+
+    private final Map<String, java.util.List<String>> context = new java.util.LinkedHashMap<>();
 
     public Node(String id, String label, String description) {
         if (id == null || id.isBlank()) {
@@ -37,6 +40,24 @@ public class Node {
 
     public String getDescription() {
         return description;
+    }
+
+    public void addContext(String key, String value) {
+        context.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(value);
+    }
+
+    public Map<String, java.util.List<String>> getContext() {
+        return java.util.Collections.unmodifiableMap(context);
+    }
+
+    public Node copy() {
+        Node clone = new Node(this.id, this.label, this.description);
+        for (Map.Entry<String, java.util.List<String>> entry : this.context.entrySet()) {
+            for (String val : entry.getValue()) {
+                clone.addContext(entry.getKey(), val);
+            }
+        }
+        return clone;
     }
 
     @Override

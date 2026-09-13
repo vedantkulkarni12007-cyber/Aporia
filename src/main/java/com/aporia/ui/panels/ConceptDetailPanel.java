@@ -5,6 +5,7 @@ import com.aporia.ui.state.VisualEdge;
 import com.aporia.ui.state.VisualGraph;
 import com.aporia.ui.state.VisualNode;
 import javafx.geometry.Insets;
+import javafx.scene.Cursor;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -13,6 +14,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -20,56 +23,58 @@ public class ConceptDetailPanel extends VBox {
 
     private final Label titleLabel;
     private final Text descriptionText;
+    private final VBox aboutBox;
     private final VBox relationsBox;
+    private final VBox contextBox;
+    private final VBox sourcesBox;
+    
     private final Button exploreBtn;
     
     private final Consumer<String> onExplore;
+    private final Consumer<VisualNode> onSelect;
     private VisualNode currentNode;
 
-    public ConceptDetailPanel(Consumer<String> onExplore) {
+    public ConceptDetailPanel(Consumer<String> onExplore, Consumer<VisualNode> onSelect) {
         this.onExplore = onExplore;
+        this.onSelect = onSelect;
         
         // Archival Observatory styling
         setStyle("-fx-background-color: rgba(26, 26, 24, 0.90); -fx-border-color: #B59E80; -fx-border-width: 1px; -fx-background-radius: 5px; -fx-border-radius: 5px;");
         setPadding(new Insets(20));
-        setSpacing(15);
-        setPrefWidth(320);
-        setMaxWidth(350);
+        setSpacing(20);
+        setPrefWidth(340);
+        setMaxWidth(380);
         
         titleLabel = new Label();
-        titleLabel.setFont(Font.font("SansSerif", FontWeight.BOLD, 18));
+        titleLabel.setFont(Font.font("SansSerif", FontWeight.BOLD, 20));
         titleLabel.setStyle("-fx-text-fill: #F0EAD6;");
         titleLabel.setWrapText(true);
         
         descriptionText = new Text();
         descriptionText.setFont(Font.font("SansSerif", 14));
         descriptionText.setStyle("-fx-fill: #A69F91;");
-        descriptionText.setWrappingWidth(280);
+        descriptionText.setWrappingWidth(290);
         
-        Label relationsTitle = new Label("RELATIONSHIPS");
-        relationsTitle.setFont(Font.font("SansSerif", FontWeight.BOLD, 12));
-        relationsTitle.setStyle("-fx-text-fill: #B59E80;");
+        aboutBox = new VBox(8, createSectionTitle("ABOUT"), descriptionText);
         
-        relationsBox = new VBox(8); // spacing
+        relationsBox = new VBox(10);
+        contextBox = new VBox(10);
         
-        Label sourcesTitle = new Label("SOURCES");
-        sourcesTitle.setFont(Font.font("SansSerif", FontWeight.BOLD, 12));
-        sourcesTitle.setStyle("-fx-text-fill: #B59E80;");
-        
-        Label sourcesText = new Label("Aggregated Knowledge\n(Provenance not tracked per-node)");
+        Label sourcesText = new Label("Aggregated Knowledge\nProvenance not tracked per-node");
         sourcesText.setFont(Font.font("SansSerif", 13));
         sourcesText.setStyle("-fx-text-fill: #A69F91;");
+        sourcesBox = new VBox(8, createSectionTitle("SOURCES"), sourcesText);
         
         exploreBtn = new Button("Explore Concept");
         exploreBtn.setStyle("-fx-background-color: #B59E80; -fx-text-fill: #1A1A18; -fx-background-radius: 3px; -fx-padding: 8px 15px; -fx-font-weight: bold; -fx-cursor: hand;");
         exploreBtn.setMaxWidth(Double.MAX_VALUE);
         exploreBtn.setOnAction(e -> {
-            if (currentNode != null && onExplore != null) {
-                onExplore.accept(currentNode.getDomainNode().getId());
+            if (currentNode != null && this.onExplore != null) {
+                this.onExplore.accept(currentNode.getDomainNode().getId());
             }
         });
         
-        VBox scrollContent = new VBox(20, descriptionText, relationsTitle, relationsBox, sourcesTitle, sourcesText);
+        VBox scrollContent = new VBox(25, aboutBox, relationsBox, contextBox, sourcesBox);
         scrollContent.setPadding(new Insets(0, 10, 0, 0));
         
         ScrollPane scrollPane = new ScrollPane();
@@ -83,6 +88,13 @@ public class ConceptDetailPanel extends VBox {
         getChildren().addAll(titleLabel, scrollPane, exploreBtn);
         
         setVisible(false);
+    }
+    
+    private Label createSectionTitle(String title) {
+        Label lbl = new Label(title);
+        lbl.setFont(Font.font("SansSerif", FontWeight.BOLD, 12));
+        lbl.setStyle("-fx-text-fill: #B59E80;");
+        return lbl;
     }
     
     private String createScrollbarStyle() {
@@ -111,34 +123,31 @@ public class ConceptDetailPanel extends VBox {
             descriptionText.setText("No description available.");
         }
         
+        // Populate Connected Ideas
         relationsBox.getChildren().clear();
+        relationsBox.getChildren().add(createSectionTitle("CONNECTED IDEAS"));
         
-        // Find both outgoing and incoming edges connected to this node
         var connectedEdges = graph.getEdges().stream()
                 .filter(e -> e.getSource().equals(node) || e.getTarget().equals(node))
                 .collect(Collectors.toList());
                 
         if (connectedEdges.isEmpty()) {
-            Label noRels = new Label("No relationships available.");
+            Label noRels = new Label("No connected ideas available.");
             noRels.setStyle("-fx-text-fill: #A69F91; -fx-font-size: 13px;");
             relationsBox.getChildren().add(noRels);
         } else {
             for (VisualEdge edge : connectedEdges) {
                 boolean isOutgoing = edge.getSource().equals(node);
-                String relatedLabel = isOutgoing 
-                    ? edge.getTarget().getDomainNode().getLabel()
-                    : edge.getSource().getDomainNode().getLabel();
-                    
-                String relType = edge.getDomainEdge().relationship();
-                relType = relType.replace("_", " ").toLowerCase();
+                VisualNode targetVisual = isOutgoing ? edge.getTarget() : edge.getSource();
                 
-                // Add directional context for clarity on incoming edges
+                String relatedLabel = targetVisual.getDomainNode().getLabel();
+                String relType = edge.getDomainEdge().relationship().replace("_", " ").toLowerCase();
                 if (!isOutgoing) {
                     relType = "incoming: " + relType;
                 }
                 
                 Label targetLbl = new Label(relatedLabel);
-                targetLbl.setFont(Font.font("SansSerif", FontWeight.BOLD, 13));
+                targetLbl.setFont(Font.font("SansSerif", FontWeight.BOLD, 14));
                 targetLbl.setStyle("-fx-text-fill: #F0EAD6;");
                 
                 Label relLbl = new Label(relType);
@@ -146,8 +155,51 @@ public class ConceptDetailPanel extends VBox {
                 relLbl.setStyle("-fx-text-fill: #A69F91;");
                 
                 VBox relPair = new VBox(2, targetLbl, relLbl);
+                relPair.setPadding(new Insets(5));
+                relPair.setStyle("-fx-background-color: transparent; -fx-background-radius: 3px;");
+                
+                // Make clickable
+                relPair.setCursor(Cursor.HAND);
+                relPair.setOnMouseEntered(e -> relPair.setStyle("-fx-background-color: #2A2824; -fx-background-radius: 3px;"));
+                relPair.setOnMouseExited(e -> relPair.setStyle("-fx-background-color: transparent; -fx-background-radius: 3px;"));
+                relPair.setOnMouseClicked(e -> {
+                    if (onSelect != null) {
+                        onSelect.accept(targetVisual);
+                    }
+                });
+                
                 relationsBox.getChildren().add(relPair);
             }
+        }
+        
+        // Populate Context
+        contextBox.getChildren().clear();
+        Map<String, List<String>> context = domainNode.getContext();
+        if (!context.isEmpty()) {
+            contextBox.getChildren().add(createSectionTitle("CONTEXT"));
+            for (Map.Entry<String, List<String>> entry : context.entrySet()) {
+                String key = entry.getKey().replace("_", " ");
+                // Title case key
+                key = key.substring(0, 1).toUpperCase() + key.substring(1).toLowerCase();
+                
+                Label keyLbl = new Label(key);
+                keyLbl.setFont(Font.font("SansSerif", FontWeight.BOLD, 12));
+                keyLbl.setStyle("-fx-text-fill: #A69F91;");
+                
+                String valuesStr = String.join(", ", entry.getValue());
+                Text valTxt = new Text(valuesStr);
+                valTxt.setFont(Font.font("SansSerif", 13));
+                valTxt.setStyle("-fx-fill: #F0EAD6;");
+                valTxt.setWrappingWidth(280);
+                
+                VBox ctxPair = new VBox(2, keyLbl, valTxt);
+                contextBox.getChildren().add(ctxPair);
+            }
+            contextBox.setVisible(true);
+            contextBox.setManaged(true);
+        } else {
+            contextBox.setVisible(false);
+            contextBox.setManaged(false);
         }
         
         exploreBtn.setDisable(node.getDepth() == 0); // Root is already explored

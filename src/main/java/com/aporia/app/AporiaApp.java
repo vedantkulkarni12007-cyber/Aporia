@@ -131,7 +131,13 @@ public class AporiaApp extends Application {
         searchBtn.setOnAction(e -> triggerSearch.run());
         searchField.setOnAction(e -> triggerSearch.run());
         
-        detailPanel = new ConceptDetailPanel(conceptId -> performExplore(conceptId));
+        detailPanel = new ConceptDetailPanel(
+            conceptId -> performExplore(conceptId),
+            node -> {
+                visualGraph.selectNode(node);
+                handleNodeClick(node);
+            }
+        );
 
         StackPane root = new StackPane();
         canvas.widthProperty().bind(root.widthProperty());
@@ -240,29 +246,39 @@ public class AporiaApp extends Application {
             try {
                 KnowledgeResult result = aggregator.search(query);
                 Platform.runLater(() -> {
-                    if (currentRequestId == searchRequestCounter) {
-                        isWorking = false;
-                        statusLabel.setText("");
-                        searchField.setText(result.primaryConcept().title());
-                        
-                        expansionHistory.clear();
-                        expandedConceptIds.clear();
-                        
-                        activeGraph = new Graph();
-                        KnowledgeMapper.appendToGraph(activeGraph, result);
-                        Node rootNode = activeGraph.getNode(result.primaryConcept().id());
-                        
-                        visualGraph.initializeFromDomain(activeGraph, rootNode);
-                        expandedConceptIds.add(rootNode.getId());
-                        
-                        VisualNode rootVisualNode = visualGraph.getNodes().stream()
-                            .filter(vn -> vn.getDomainNode().equals(rootNode))
-                            .findFirst().orElse(null);
-                        visualGraph.selectNode(rootVisualNode);
-                        detailPanel.update(rootVisualNode, visualGraph);
-                        
-                        camera.reset();
-                        updateBackButton();
+                    try {
+                        if (currentRequestId == searchRequestCounter) {
+                            isWorking = false;
+                            statusLabel.setText("");
+                            searchField.setText(result.primaryConcept().title());
+                            
+                            expansionHistory.clear();
+                            expandedConceptIds.clear();
+                            
+                            activeGraph = new Graph();
+                            KnowledgeMapper.appendToGraph(activeGraph, result);
+                            Node rootNode = activeGraph.getNode(result.primaryConcept().id());
+                            
+                            visualGraph.initializeFromDomain(activeGraph, rootNode);
+                            expandedConceptIds.add(rootNode.getId());
+                            
+                            VisualNode rootVisualNode = visualGraph.getNodes().stream()
+                                .filter(vn -> vn.getDomainNode().equals(rootNode))
+                                .findFirst().orElse(null);
+                            visualGraph.selectNode(rootVisualNode);
+                            detailPanel.update(rootVisualNode, visualGraph);
+                            
+                            camera.reset();
+                            updateBackButton();
+                        }
+                    } catch (Exception e) {
+                        if (currentRequestId == searchRequestCounter) {
+                            isWorking = false;
+                            statusLabel.setText("Mapping failed.");
+                            statusLabel.setStyle("-fx-text-fill: #E35353;");
+                            System.err.println("Search mapping error: " + e.getMessage());
+                            e.printStackTrace();
+                        }
                     }
                 });
             } catch (KnowledgeException ex) {
@@ -302,7 +318,11 @@ public class AporiaApp extends Application {
         }
         
         Node exploredNode = visualNode.getDomainNode();
-        String query = exploredNode.getLabel(); // Fallback to label for textual search
+        
+        // Phase 6.3: Prefer stable Wikidata Q-ID identity to prevent duplication/disconnects
+        String query = exploredNode.getId().matches("^Q\\d+$") 
+            ? exploredNode.getId() 
+            : exploredNode.getLabel(); 
         
         // Snapshot current state
         String selectedId = visualGraph.getSelectedNode() != null ? visualGraph.getSelectedNode().getDomainNode().getId() : null;
@@ -326,26 +346,40 @@ public class AporiaApp extends Application {
                 // Explore by textual query string matching the node's label
                 KnowledgeResult result = aggregator.search(query);
                 Platform.runLater(() -> {
-                    if (currentRequestId == searchRequestCounter) {
-                        isWorking = false;
-                        statusLabel.setText("");
-                        expansionHistory.push(snapshot);
-                        updateBackButton();
-                        
-                        List<Node> newNodes = KnowledgeMapper.appendToGraph(activeGraph, result);
-                        Map<Node, NodeLayout> layoutMap = visualGraph.getLayoutMap();
-                        
-                        IncrementalLayout.expand(layoutMap, exploredNode, newNodes, 150.0);
-                        
-                        visualGraph.expandFromDomain(activeGraph, layoutMap);
-                        expandedConceptIds.add(exploredNode.getId());
-                        
-                        // Keep the explored node selected
-                        VisualNode sel = visualGraph.getNodes().stream()
-                            .filter(n -> n.getDomainNode().getId().equals(exploredNode.getId()))
-                            .findFirst().orElse(null);
-                        visualGraph.selectNode(sel);
-                        detailPanel.update(sel, visualGraph);
+                    try {
+                        if (currentRequestId == searchRequestCounter) {
+                            isWorking = false;
+                            statusLabel.setText("");
+                            expansionHistory.push(snapshot);
+                            updateBackButton();
+                            
+                            List<Node> newNodes = KnowledgeMapper.appendToGraph(activeGraph, result);
+                            Map<Node, NodeLayout> layoutMap = visualGraph.getLayoutMap();
+                            
+                            IncrementalLayout.expand(layoutMap, exploredNode, newNodes, 150.0);
+                            
+                            visualGraph.expandFromDomain(activeGraph, layoutMap);
+                            expandedConceptIds.add(exploredNode.getId());
+                            
+                            // Keep the explored node selected
+                            VisualNode sel = visualGraph.getNodes().stream()
+                                .filter(n -> n.getDomainNode().getId().equals(exploredNode.getId()))
+                                .findFirst().orElse(null);
+                            visualGraph.selectNode(sel);
+                            detailPanel.update(sel, visualGraph);
+                        }
+                    } catch (Exception e) {
+                        if (currentRequestId == searchRequestCounter) {
+                            isWorking = false;
+                            statusLabel.setText("Explore mapping failed.");
+                            statusLabel.setStyle("-fx-text-fill: #E35353;");
+                            System.err.println("Explore mapping error: " + e.getMessage());
+                            e.printStackTrace();
+                            if (!expansionHistory.isEmpty()) {
+                                expansionHistory.pop();
+                                updateBackButton();
+                            }
+                        }
                     }
                 });
             } catch (KnowledgeException ex) {

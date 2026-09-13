@@ -51,8 +51,12 @@ public class KnowledgeMapper {
             }
         }
 
-        // 3. Construct the edges between the Nodes
+        // 3. Construct the edges between the Nodes (Conceptual only)
         for (KnowledgeRelation relation : conceptualRelations) {
+            if (relation.sourceId().equals(relation.targetId())) {
+                continue; // Phase 6.4: ignore self-loops entirely
+            }
+            
             Node source = graph.getNode(relation.sourceId());
             Node target = graph.getNode(relation.targetId());
 
@@ -68,6 +72,28 @@ public class KnowledgeMapper {
                 
                 if (!edgeExists) {
                     graph.addEdge(new Edge(source, target, relation.type()));
+                }
+            }
+        }
+        
+        // 4. Map CONTEXTUAL relationships into node context
+        for (KnowledgeRelation r : result.relations()) {
+            if (r.category() == KnowledgeRelation.RelationCategory.CONTEXTUAL) {
+                if (r.sourceId().equals(r.targetId())) {
+                    continue; // Phase 6.4: safely ignore useless contextual self-loops
+                }
+                
+                Node source = graph.getNode(r.sourceId());
+                if (source != null) {
+                    // Resolve target ID to a human-readable label
+                    String targetLabel = r.targetId();
+                    for (KnowledgeConcept c : result.relatedConcepts()) {
+                        if (c.id().equals(r.targetId())) {
+                            targetLabel = c.title();
+                            break;
+                        }
+                    }
+                    source.addContext(r.type(), targetLabel);
                 }
             }
         }

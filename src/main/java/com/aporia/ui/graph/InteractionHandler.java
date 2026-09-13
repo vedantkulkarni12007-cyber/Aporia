@@ -4,6 +4,7 @@ import com.aporia.graph.layout.Point;
 import com.aporia.ui.camera.Camera;
 import com.aporia.ui.state.VisualGraph;
 import com.aporia.ui.state.VisualNode;
+import java.util.function.Consumer;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
@@ -14,16 +15,22 @@ import javafx.scene.input.ScrollEvent;
 public class InteractionHandler {
     private final Camera camera;
     private final VisualGraph visualGraph;
+    private final Consumer<VisualNode> onNodeClicked;
     private double lastMouseX;
     private double lastMouseY;
+    private double pressedX;
+    private double pressedY;
+    private static final double DRAG_THRESHOLD = 5.0;
     private static final double BASE_HIT_RADIUS = 24.0;
 
-    public InteractionHandler(Canvas canvas, Camera camera, VisualGraph visualGraph) {
+    public InteractionHandler(Canvas canvas, Camera camera, VisualGraph visualGraph, Consumer<VisualNode> onNodeClicked) {
         this.camera = camera;
         this.visualGraph = visualGraph;
+        this.onNodeClicked = onNodeClicked;
 
         canvas.setOnMousePressed(this::handleMousePressed);
         canvas.setOnMouseDragged(this::handleMouseDragged);
+        canvas.setOnMouseReleased(this::handleMouseReleased);
         canvas.setOnScroll(this::handleScroll);
         canvas.setOnMouseMoved(this::handleMouseMoved);
     }
@@ -31,9 +38,22 @@ public class InteractionHandler {
     private void handleMousePressed(MouseEvent event) {
         lastMouseX = event.getX();
         lastMouseY = event.getY();
+        pressedX = event.getX();
+        pressedY = event.getY();
 
         VisualNode clickedNode = hitTest(event.getX(), event.getY(), camera, visualGraph);
         visualGraph.selectNode(clickedNode);
+    }
+
+    private void handleMouseReleased(MouseEvent event) {
+        double dx = event.getX() - pressedX;
+        double dy = event.getY() - pressedY;
+        if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) {
+            VisualNode clickedNode = hitTest(event.getX(), event.getY(), camera, visualGraph);
+            if (clickedNode != null && onNodeClicked != null) {
+                onNodeClicked.accept(clickedNode);
+            }
+        }
     }
 
     private void handleMouseDragged(MouseEvent event) {

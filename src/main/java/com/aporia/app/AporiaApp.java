@@ -6,6 +6,7 @@ import com.aporia.ui.camera.Camera;
 import com.aporia.ui.graph.GraphRenderer;
 import com.aporia.ui.graph.InteractionHandler;
 import com.aporia.ui.state.VisualGraph;
+import com.aporia.ui.state.VisualNode;
 import com.aporia.knowledge.KnowledgeAggregator;
 import com.aporia.knowledge.KnowledgeException;
 import com.aporia.knowledge.KnowledgeMapper;
@@ -28,6 +29,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 
+import java.util.Stack;
+
 public class AporiaApp extends Application {
 
     private VisualGraph visualGraph;
@@ -37,6 +40,13 @@ public class AporiaApp extends Application {
     
     // Request counter to handle search race conditions
     private int searchRequestCounter = 0;
+    private boolean isExploring = false;
+    
+    // Minimal history state
+    private Stack<String> navigationHistory = new Stack<>();
+    private Button backBtn;
+    private TextField searchField;
+    private Label statusLabel;
 
     @Override
     public void start(Stage primaryStage) {
@@ -59,55 +69,40 @@ public class AporiaApp extends Application {
         renderer = new GraphRenderer(canvas, visualGraph, camera);
         renderer.setReducedMotion(reducedMotion);
 
-        // 4. Input Handling for Graph Interaction
-        new InteractionHandler(canvas, camera, visualGraph);
+        // 4. Input Handling for Graph Interaction (click to explore)
+        new InteractionHandler(canvas, camera, visualGraph, this::handleNodeClick);
 
         // 5. Setup Minimal Search UI
-        TextField searchField = new TextField();
+        searchField = new TextField();
         searchField.setPromptText("Search knowledge...");
         searchField.setStyle("-fx-background-color: #2A2A28; -fx-text-fill: #F0EAD6; -fx-prompt-text-fill: #A69F91; -fx-border-color: #B59E80; -fx-border-width: 1px; -fx-border-radius: 3px; -fx-background-radius: 3px; -fx-padding: 5px 10px;");
         
         Button searchBtn = new Button("Explore");
         searchBtn.setStyle("-fx-background-color: #B59E80; -fx-text-fill: #1A1A18; -fx-background-radius: 3px; -fx-padding: 5px 15px; -fx-font-weight: bold; -fx-cursor: hand;");
         
-        Label statusLabel = new Label();
+        backBtn = new Button("← Back");
+        backBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #B59E80; -fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 5px 10px;");
+        backBtn.setDisable(true);
+        backBtn.setOnAction(e -> {
+            if (!navigationHistory.isEmpty() && !isExploring) {
+                String prevConcept = navigationHistory.pop();
+                exploreConcept(prevConcept, false); // false = don't push current root to history
+            }
+        });
+        
+        statusLabel = new Label();
         statusLabel.setStyle("-fx-text-fill: #A69F91;");
         
-        HBox searchBox = new HBox(10, searchField, searchBtn, statusLabel);
+        HBox searchBox = new HBox(10, backBtn, searchField, searchBtn, statusLabel);
+        searchBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         searchBox.setPadding(new Insets(20));
         searchBox.setPickOnBounds(false); // Let mouse events pass through to canvas
         
         Runnable performSearch = () -> {
+            if (isExploring) return;
             String query = searchField.getText().trim();
             if (query.isEmpty()) return;
-            
-            final int currentRequestId = ++searchRequestCounter;
-            statusLabel.setText("Exploring...");
-            statusLabel.setStyle("-fx-text-fill: #A69F91;"); // Neutral
-            
-            // Execute retrieval on background thread to prevent UI freezing
-            Thread thread = new Thread(() -> {
-                try {
-                    KnowledgeResult result = aggregator.search(query);
-                    Platform.runLater(() -> {
-                        // Only apply if this is still the most recent request
-                        if (currentRequestId == searchRequestCounter) {
-                            statusLabel.setText("");
-                            updateGraph(result);
-                        }
-                    });
-                } catch (KnowledgeException ex) {
-                    Platform.runLater(() -> {
-                        if (currentRequestId == searchRequestCounter) {
-                            statusLabel.setText("Could not retrieve that concept.");
-                            statusLabel.setStyle("-fx-text-fill: #E35353;"); // Error color
-                            System.err.println("Search failed: " + ex.getMessage());
-                        }
-                    });
-                }
-            });
-            thread.setDaemon(true);
-            thread.start();
+            exploreConcept(query, true); // true = push current root to history
         };
 
         searchBtn.setOnAction(e -> performSearch.run());
@@ -154,6 +149,74 @@ public class AporiaApp extends Application {
         Node initialNode = new Node("welcome", "Aporia Observatory");
         initialGraph.addNode(initialNode);
         visualGraph.initializeFromDomain(initialGraph, initialNode);
+    }
+    
+    private void handleNodeClick(VisualNode node) {
+        if (isExploring) return;
+        if (node.getDepth() == 0) return; // Do not reload the exact same root concept
+        
+        exploreConcept(node.getDomainNode().getLabel(), true);
+    }
+    
+    /**
+     * Unified exploration pathway for both Search UI and Graph node clicks.
+     * @param query the concept to explore
+     * @param pushHistory true if the current root concept should be saved to history
+     */
+    private void exploreConcept(String query, boolean pushHistory) {
+        isExploring = true;
+        final int currentRequestId = ++searchRequestCounter;
+        
+        if (pushHistory) {
+            visualGraph.getNodes().stream()
+                .filter(vn -> vn.getDepth() == 0)
+                .findFirst()
+                .ifPresent(rootNode -> {
+                    // Only push if it has a real query label, bypass the dummy welcome node
+                    if (!rootNode.getDomainNode().getId().equals("welcome")) {
+                        navigationHistory.push(rootNode.getDomainNode().getLabel());
+                    }
+                });
+        }
+        
+        Platform.runLater(() -> {
+            statusLabel.setText("Exploring...");
+            statusLabel.setStyle("-fx-text-fill: #A69F91;"); // Neutral
+            backBtn.setDisable(navigationHistory.isEmpty());
+        });
+        
+        Thread thread = new Thread(() -> {
+            try {
+                KnowledgeResult result = aggregator.search(query);
+                Platform.runLater(() -> {
+                    // Only apply if this is still the most recent request
+                    if (currentRequestId == searchRequestCounter) {
+                        isExploring = false;
+                        statusLabel.setText("");
+                        searchField.setText(result.primaryConcept().title()); // Sync UI
+                        updateGraph(result);
+                    }
+                });
+            } catch (KnowledgeException ex) {
+                Platform.runLater(() -> {
+                    if (currentRequestId == searchRequestCounter) {
+                        isExploring = false;
+                        statusLabel.setText("Could not explore that concept.");
+                        statusLabel.setStyle("-fx-text-fill: #E35353;"); // Error color
+                        
+                        // Revert history if we just pushed to it
+                        if (pushHistory && !navigationHistory.isEmpty()) {
+                            navigationHistory.pop();
+                            backBtn.setDisable(navigationHistory.isEmpty());
+                        }
+                        
+                        System.err.println("Exploration failed: " + ex.getMessage());
+                    }
+                });
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
     }
     
     private void updateGraph(KnowledgeResult result) {

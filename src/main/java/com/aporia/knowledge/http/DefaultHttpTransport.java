@@ -40,4 +40,22 @@ public class DefaultHttpTransport implements HttpTransport {
         
         return response.body();
     }
+
+    @Override
+    public String post(String url, String jsonBody, int timeoutSeconds) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .timeout(Duration.ofSeconds(timeoutSeconds))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+            .build();
+            
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        
+        if (response.statusCode() >= 400) {
+            throw new Exception("HTTP POST request failed with status: " + response.statusCode() + " for URL: " + url);
+        }
+        
+        return response.body();
+    }
 }
